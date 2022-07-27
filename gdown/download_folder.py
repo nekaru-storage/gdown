@@ -9,6 +9,7 @@ import os.path as osp
 import re
 import sys
 import textwrap
+import unicodedata
 
 import bs4
 
@@ -70,17 +71,13 @@ def _parse_google_drive_file(folder, content):
     folder_arr = json.loads(decoded)
 
     folder_contents = [] if folder_arr[0] is None else folder_arr[0]
-
-    sep = " - "  # unicode dash
-    splitted = folder_soup.title.contents[0].split(sep)
-    if len(splitted) >= 2:
-        name = sep.join(splitted[:-1])
-    else:
-        raise RuntimeError(
-            "file/folder name cannot be extracted from: {}".format(
-                folder_soup.title.contents[0]
-            )
-        )
+    seps = [" - ", " – "]  # unicode dash and endash
+    for sep in seps:
+        splitted = unicodedata.normalize("NFKD", folder_soup.title.contents[0]).split(sep)
+        print(f"SPLITTED: {splitted}")
+        if len(splitted) >= 2:
+            name = sep.join(splitted[:-1])
+            break
 
     gdrive_file = _GoogleDriveFile(
         id=folder.split("/")[-1],
