@@ -74,16 +74,6 @@ $ gdown --fuzzy "https://docs.google.com/presentation/d/15umvZKlsJ3094HNg5S4vJsI
 $ # a folder
 $ gdown https://drive.google.com/drive/folders/15uNXeRBIhVvZJIhL4yTw4IsStMhUaaxl -O /tmp/folder --folder
 
-$ # using the cookis from a file
-$ # my_cookies.txt
-$ # {
-$ # 		"__Secure-1PAPISID": "XXXXXXXX",
-$ # 		"__Secure-1PSID": "XXXXXXX",
-$ # 		...
-$ # 		"SSID": "XXXXXXXXX"
-$ # }
-$ gdown https://drive.google.com/drive/folders/15uNXeRBIhVvZJIhL4yTw4IsStMhUaaxl --cookies=my_cookies.txt
-
 $ # as an alternative to curl/wget
 $ gdown https://httpbin.org/ip -O ip.json
 $ cat ip.json
@@ -107,17 +97,6 @@ url = "https://drive.google.com/uc?id=1l_5RK28JRL19wpT22B-DY9We3TVXnnQQ"
 output = "fcn8s_from_caffe.npz"
 gdown.download(url, output, quiet=False)
 
-
-# downloa file with user cookies
-cookies = {
- 	"__Secure-1PAPISID": "XXXXXXXX",
- 	"__Secure-1PSID": "XXXXXXX",
- 	...
- 	"SSID": "XXXXXXXXX"
-}
-id = "15uNXeRBIhVvZJIhL4yTw4IsStMhUaaxl"
-gdown.download_folder(id=id, cookies = cookies)
-
 # same as the above, but with the file ID
 id = "0B9P1L--7Wd2vNm9zMTJWOGxobkU"
 gdown.download(id=id, output=output, quiet=False)
@@ -138,9 +117,6 @@ gdown.download_folder(url, quiet=True, use_cookies=False)
 id = "15uNXeRBIhVvZJIhL4yTw4IsStMhUaaxl"
 gdown.download_folder(id=id, quiet=True, use_cookies=False)
 ```
-
-
-
 
 
 ## License
