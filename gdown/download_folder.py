@@ -8,8 +8,8 @@ import os
 import os.path as osp
 import re
 import sys
-import warnings
 import unicodedata
+import warnings
 
 import bs4
 
