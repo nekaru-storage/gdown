@@ -205,7 +205,7 @@ def download_folder(
     use_cookies=True,
     remaining_ok=False,
     verify=True,
-    resume=False
+    resume=False,
 ):
     """Downloads entire folder from URL.
 
