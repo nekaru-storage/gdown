@@ -4,14 +4,19 @@ import argparse
 import os.path
 import re
 import sys
+import textwrap
 import warnings
 
+import requests
 import six
 
 from . import __version__
+from ._indent import indent
 from .download import download
 from .download_folder import MAX_NUMBER_FILES
 from .download_folder import download_folder
+from .exceptions import FileURLRetrievalError
+from .exceptions import FolderContentsMaximumLimitError
 
 
 class _ShowVersionAction(argparse.Action):
@@ -58,7 +63,10 @@ def main():
     )
     parser.add_argument("-O", "--output", help="output file name / path")
     parser.add_argument(
-        "-q", "--quiet", action="store_true", help="suppress standard output"
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="suppress logging except errors",
     )
     parser.add_argument(
         "--fuzzy",
@@ -108,6 +116,11 @@ def main():
         help="(folder only) asserts that is ok to download max "
         "{max} files per folder.".format(max=MAX_NUMBER_FILES),
     )
+    parser.add_argument(
+        "--format",
+        help="Format of Google Docs, Spreadsheets and Slides. "
+        "Default is Google Docs: 'docx', Spreadsheet: 'xlsx', Slides: 'pptx'.",
+    )
 
     args = parser.parse_args()
 
@@ -134,34 +147,62 @@ def main():
             url = None
             id = args.url_or_id
 
-    if args.folder:
-        filenames = download_folder(
-            url=url,
-            id=id,
-            output=args.output,
-            quiet=args.quiet,
-            proxy=args.proxy,
-            speed=args.speed,
-            use_cookies=not args.no_cookies,
-            remaining_ok=args.remaining_ok,
+    try:
+        if args.folder:
+            download_folder(
+                url=url,
+                id=id,
+                output=args.output,
+                quiet=args.quiet,
+                proxy=args.proxy,
+                speed=args.speed,
+                use_cookies=not args.no_cookies,
+                verify=not args.no_check_certificate,
+                remaining_ok=args.remaining_ok,
+            )
+        else:
+            download(
+                url=url,
+                output=args.output,
+                quiet=args.quiet,
+                proxy=args.proxy,
+                speed=args.speed,
+                use_cookies=not args.no_cookies,
+                verify=not args.no_check_certificate,
+                id=id,
+                fuzzy=args.fuzzy,
+                resume=args.continue_,
+                format=args.format,
+            )
+    except FileURLRetrievalError as e:
+        print(e, file=sys.stderr)
+        sys.exit(1)
+    except FolderContentsMaximumLimitError as e:
+        print(
+            "Failed to retrieve folder contents:\n\n{}\n\n"
+            "You can use `--remaining-ok` option to ignore this error.".format(
+                indent("\n".join(textwrap.wrap(str(e))), prefix="\t")
+            ),
+            file=sys.stderr,
         )
-        success = filenames is not None
-    else:
-        filename = download(
-            url=url,
-            output=args.output,
-            quiet=args.quiet,
-            proxy=args.proxy,
-            speed=args.speed,
-            use_cookies=not args.no_cookies,
-            verify=not args.no_check_certificate,
-            id=id,
-            fuzzy=args.fuzzy,
-            resume=args.continue_,
+        sys.exit(1)
+    except requests.exceptions.ProxyError as e:
+        print(
+            "Failed to use proxy:\n\n{}\n\n"
+            "Please check your proxy settings.".format(
+                indent("\n".join(textwrap.wrap(str(e))), prefix="\t")
+            ),
+            file=sys.stderr,
         )
-        success = filename is not None
-
-    if not success:
+        sys.exit(1)
+    except Exception as e:
+        print(
+            "Error:\n\n{}\n\nTo report issues, please visit "
+            "https://github.com/wkentaro/gdown/issues.".format(
+                indent("\n".join(textwrap.wrap(str(e))), prefix="\t")
+            ),
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 

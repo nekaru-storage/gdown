@@ -105,6 +105,33 @@ jobs:
         output=/tmp/folder-limit/
         gdown https://drive.google.com/drive/folders/1gd3xLkmjT8IckN6WtMbyFZvLR4exRIkn -O $output --quiet --folder && exit 1 || exit 0
 
+    - name: Download docs from Google Drive
+      run: |
+        output=/tmp/file.txt
+        file_id=1TFYNzuZJTgNGzGmjraZ58ZVOh9_YoKeBnU-opWgXQL4
+        md5=6c17d87d3d01405ac5c9bb65ee2d2fc2
+        gdown $file_id -O $output --quiet --format txt
+        actual_hash=$(md5sum $output | awk '{print $1}')
+        test $actual_hash = $md5
+
+    - name: Download spreadsheets from Google Drive
+      run: |
+        output=/tmp/file.pdf
+        file_id=1h6wQX7ATSJDOSWFEjHPmv_nukJzZD_zZ30Jvy6XNiTE
+        md5=5be20dd8a23afa06365714edc24856f3
+        gdown $file_id -O $output --quiet --format pdf
+        actual_hash=$(md5sum $output | awk '{print $1}')
+        test $actual_hash = $md5
+
+    - name: Download slides from Google Drive
+      run: |
+        output=/tmp/file.pdf
+        file_id=13AhW1Z1GYGaiTpJ0Pr2TTXoQivb6jx-a
+        md5=96704c6c40e308a68d3842e83a0136b9
+        gdown $file_id -O $output --quiet --format pdf
+        actual_hash=$(md5sum $output | awk '{print $1}')
+        test $actual_hash = $md5
+
     # FIXME: too unstable
     # - name: Download a folder with a file count more than the limit from Google Drive
     #   run: |
@@ -113,6 +140,7 @@ jobs:
     #     actual_hash=$(find $output -type f -exec md5sum {} \; | awk '{print $1}' | sort | md5sum | awk '{print $1}')
     #     test $actual_hash = b0e45acb8d9c7d9200ce8fe38896c790
     #     rm -rf $output
+    #  if: matrix.python-version != '2.7'
 
     - name: Install from dist
       run: |

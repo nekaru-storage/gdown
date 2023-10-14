@@ -14,19 +14,12 @@ import requests
 import six
 import tqdm
 
+from ._indent import indent
+from .exceptions import FileURLRetrievalError
 from .parse_url import parse_url
 
 CHUNK_SIZE = 512 * 1024  # 512KB
 home = osp.expanduser("~")
-
-
-# textwrap.indent for Python2
-def indent(text, prefix):
-    def prefixed_lines():
-        for line in text.splitlines(True):
-            yield (prefix + line if line.strip() else line)
-
-    return "".join(prefixed_lines())
 
 
 def get_url_from_gdrive_confirmation(contents):
@@ -51,9 +44,9 @@ def get_url_from_gdrive_confirmation(contents):
         m = re.search('<p class="uc-error-subcaption">(.*)</p>', line)
         if m:
             error = m.groups()[0]
-            raise RuntimeError(error)
+            raise FileURLRetrievalError(error)
     if not url:
-        raise RuntimeError(
+        raise FileURLRetrievalError(
             "Cannot retrieve the public link of the file. "
             "You may need to change the permission to "
             "'Anyone with the link', or have had many accesses."
@@ -61,14 +54,19 @@ def get_url_from_gdrive_confirmation(contents):
     return url
 
 
-def _get_session(use_cookies, return_cookies_file=False):
+def _get_session(proxy, use_cookies, return_cookies_file=False):
     sess = requests.session()
 
-    # Load cookies
-    cache_dir = osp.join(home, ".cache", "gdown")
-    if not osp.exists(cache_dir):
-        os.makedirs(cache_dir)
-    cookies_file = osp.join(cache_dir, "cookies.json")
+    sess.headers.update(
+        {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6)"}
+    )
+
+    if proxy is not None:
+        sess.proxies = {"http": proxy, "https": proxy}
+        print("Using proxy:", proxy, file=sys.stderr)
+
+    # Load cookies if exists
+    cookies_file = osp.join(home, ".cache/gdown/cookies.json")
     if osp.exists(cookies_file) and use_cookies:
         with open(cookies_file) as f:
             cookies = json.load(f)
@@ -92,6 +90,7 @@ def download(
     id=None,
     fuzzy=False,
     resume=False,
+    format=None,
 ):
     """Download file from URL.
 
@@ -120,6 +119,11 @@ def download(
     resume: bool
         Resume the download from existing tmp file if possible.
         Default is False.
+    format: str, optional
+        Format of Google Docs, Spreadsheets and Slides. Default is:
+            - Google Docs: 'docx'
+            - Google Spreadsheet: 'xlsx'
+            - Google Slides: 'pptx'
 
     Returns
     -------
@@ -134,12 +138,8 @@ def download(
     url_origin = url
 
     sess, cookies_file = _get_session(
-        use_cookies=use_cookies, return_cookies_file=True
+        proxy=proxy, use_cookies=use_cookies, return_cookies_file=True
     )
-
-    if proxy is not None:
-        sess.proxies = {"http": proxy, "https": proxy}
-        print("Using proxy:", proxy, file=sys.stderr)
 
     gdrive_file_id, is_gdrive_download_link = parse_url(url, warning=not fuzzy)
 
@@ -149,26 +149,70 @@ def download(
         url_origin = url
         is_gdrive_download_link = True
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36"  # NOQA
-    }
-
     while True:
-        try:
-            res = sess.get(url, headers=headers, stream=True, verify=verify)
-        except requests.exceptions.ProxyError as e:
-            print("An error has occurred using proxy:", proxy, file=sys.stderr)
-            print(e, file=sys.stderr)
-            return
+        res = sess.get(url, stream=True, verify=verify)
 
-        # Save cookies
-        with open(cookies_file, "w") as f:
-            cookies = [
-                (k, v)
-                for k, v in sess.cookies.items()
-                if not k.startswith("download_warning_")
-            ]
-            json.dump(cookies, f, indent=2)
+        if url == url_origin and res.status_code == 500:
+            # The file could be Google Docs or Spreadsheets.
+            url = "https://drive.google.com/open?id={id}".format(
+                id=gdrive_file_id
+            )
+            continue
+
+        if res.headers["Content-Type"].startswith("text/html"):
+            m = re.search("<title>(.+)</title>", res.text)
+            if m and m.groups()[0].endswith(" - Google Docs"):
+                url = (
+                    "https://docs.google.com/document/d/{id}/export"
+                    "?format={format}".format(
+                        id=gdrive_file_id,
+                        format="docx" if format is None else format,
+                    )
+                )
+                continue
+            elif m and m.groups()[0].endswith(" - Google Sheets"):
+                url = (
+                    "https://docs.google.com/spreadsheets/d/{id}/export"
+                    "?format={format}".format(
+                        id=gdrive_file_id,
+                        format="xlsx" if format is None else format,
+                    )
+                )
+                continue
+            elif m and m.groups()[0].endswith(" - Google Slides"):
+                url = (
+                    "https://docs.google.com/presentation/d/{id}/export"
+                    "?format={format}".format(
+                        id=gdrive_file_id,
+                        format="pptx" if format is None else format,
+                    )
+                )
+                continue
+        elif (
+            "Content-Disposition" in res.headers
+            and res.headers["Content-Disposition"].endswith("pptx")
+            and format not in {None, "pptx"}
+        ):
+            url = (
+                "https://docs.google.com/presentation/d/{id}/export"
+                "?format={format}".format(
+                    id=gdrive_file_id,
+                    format="pptx" if format is None else format,
+                )
+            )
+            continue
+
+        if use_cookies:
+            if not osp.exists(osp.dirname(cookies_file)):
+                os.makedirs(osp.dirname(cookies_file))
+            # Save cookies
+            with open(cookies_file, "w") as f:
+                cookies = [
+                    (k, v)
+                    for k, v in sess.cookies.items()
+                    if not k.startswith("download_warning_")
+                ]
+                json.dump(cookies, f, indent=2)
 
         if "Content-Disposition" in res.headers:
             # This is the file
@@ -179,17 +223,17 @@ def download(
         # Need to redirect with confirmation
         try:
             url = get_url_from_gdrive_confirmation(res.text)
-        except RuntimeError as e:
-            print("Access denied with the following error:")
-            error = "\n".join(textwrap.wrap(str(e)))
-            error = indent(error, "\t")
-            print("\n", error, "\n", file=sys.stderr)
-            print(
-                "You may still be able to access the file from the browser:",
-                file=sys.stderr,
+        except FileURLRetrievalError as e:
+            message = (
+                "Failed to retrieve file url:\n\n{}\n\n"
+                "You may still be able to access the file from the browser:"
+                "\n\n\t{}\n\n"
+                "but Gdown can't. Please check connections and permissions."
+            ).format(
+                indent("\n".join(textwrap.wrap(str(e))), prefix="\t"),
+                url_origin,
             )
-            print("\n\t", url_origin, "\n", file=sys.stderr)
-            return
+            raise FileURLRetrievalError(message)
 
     if gdrive_file_id and is_gdrive_download_link:
         content_disposition = six.moves.urllib_parse.unquote(
@@ -246,14 +290,18 @@ def download(
         f = output
 
     if tmp_file is not None and f.tell() != 0:
-        headers["Range"] = "bytes={}-".format(f.tell())
+        headers = {"Range": "bytes={}-".format(f.tell())}
         res = sess.get(url, headers=headers, stream=True, verify=verify)
 
     if not quiet:
         print("Downloading...", file=sys.stderr)
         if resume:
             print("Resume:", tmp_file, file=sys.stderr)
-        print("From:", url_origin, file=sys.stderr)
+        if url_origin != url:
+            print("From (original):", url_origin, file=sys.stderr)
+            print("From (redirected):", url, file=sys.stderr)
+        else:
+            print("From:", url, file=sys.stderr)
         print(
             "To:",
             osp.abspath(output) if output_is_path else output,
@@ -281,9 +329,6 @@ def download(
         if tmp_file:
             f.close()
             shutil.move(tmp_file, output)
-    except IOError as e:
-        print(e, file=sys.stderr)
-        return
     finally:
         sess.close()
 
