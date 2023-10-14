@@ -74,9 +74,14 @@ def _parse_google_drive_file(url, content):
 
     folder_contents = [] if folder_arr[0] is None else folder_arr[0]
 
-    seps = [" - ", " – "]  # unicode dash and endash
+    seps = [" - ", " – "]  # Unicode dash and endash
+
     for sep in seps:
-        splitted = unicodedata.normalize("NFKD", folder_soup.title.contents[0]).split(sep)
+        title_content = unicodedata.normalize(
+            "NFKD", folder_soup.title.contents[0]
+        )
+        splitted = title_content.split(sep)
+
         if len(splitted) >= 2:
             name = sep.join(splitted[:-1])
             break
